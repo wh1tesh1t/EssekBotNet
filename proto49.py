@@ -1,4 +1,7 @@
 # 49 protocol only!
+# >))))°>
+#   >))))°>
+#     >))))°>
 
 import socket, random, sys, time, hashlib, os, re, threading, argparse, struct
 from struct import pack
@@ -11,7 +14,8 @@ connections_lock = threading.Lock()
 MASTER_SERVERS = [
     ("mentality.rip", 27010),
     ("mentality.rip", 27011),
-    ("ms2.mentality.rip", 27010)
+    ("ms2.mentality.rip", 27010),
+    ("ms3.mentality.rip:27010", 27010)
 ]
 
 # Query master server
@@ -252,19 +256,37 @@ def client_worker(servers, nick_queue, chat_queue, build_version, platform, arch
         if stop_event.is_set():
             break
 
+def load_config():
+    try:
+        import config
+        return getattr(config, 'CONFIG', {})
+    except ImportError:
+        return {}
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('servers', nargs='*', default=[])
-    parser.add_argument('-g', '--gamedir', help='Scan and send essekers to all server from directory Example: valve, cstrike')
-    parser.add_argument('-c', '--connections', type=int, default=5)
-    parser.add_argument('-d', '--delay', type=float, default=0.2)
-    parser.add_argument('-n', '--names-file', default='names.txt')
-    parser.add_argument('-m', '--chat-file', default='chat.txt')
-    parser.add_argument('-b', '--build', default='3800-3900', help='Essekbuild version: Example: 3555 or 3555-4000')
-    parser.add_argument('-p', '--platform', default='win32', help='Essek platform: Example: win32, linux, android, etc.')
-    parser.add_argument('-a', '--arch', default='i386', help='Essek arch: Example: i386, i686, arm64, etc.')
+    parser.add_argument('-g', '--gamedir', help='Scan and send essekers to all servers from directory Example: valve, cstrike')
+    parser.add_argument('-c', '--connections', type=int, default=None)
+    parser.add_argument('-d', '--delay', type=float, default=None)
+    parser.add_argument('-n', '--names-file', default=None)
+    parser.add_argument('-m', '--chat-file', default=None)
+    parser.add_argument('-b', '--build', default=None, help='Essekbuild version: Example: 3555 or 3555-4000')
+    parser.add_argument('-p', '--platform', default=None, help='Essek platform: Example: win32, linux, android, etc.')
+    parser.add_argument('-a', '--arch', default=None, help='Essek arch: Example: i386, i686, arm64, etc.')
     args = parser.parse_args()
     
+    # Load config
+    config = load_config()
+    connections = args.connections if args.connections is not None else config.get('connections', 5)
+    delay = args.delay if args.delay is not None else config.get('delay', 0.2)
+    names_file = args.names_file if args.names_file is not None else config.get('names_file', 'names.txt')
+    chat_file = args.chat_file if args.chat_file is not None else config.get('chat_file', 'chat.txt')
+    build = args.build if args.build is not None else config.get('build', '3800-3900')
+    platform = args.platform if args.platform is not None else config.get('platform', 'win32')
+    arch = args.arch if args.arch is not None else config.get('arch', 'i386')
+    
+    # Get servers list
     if args.gamedir:
         print(f"Scanning servers from '{args.gamedir}'")
         servers = get_servers(args.gamedir, nat=False, timeout=2.0)
@@ -278,15 +300,15 @@ def main():
     print(f"Loaded {len(servers)} servers:")
     for i, (addr, port) in enumerate(servers):
         print(f"  [{i}] {addr}:{port}")
-    names = read_names(args.names_file)
+    names = read_names(names_file)
     if not names:
         sys.exit(1)
-    print(f"Loaded {len(names)} nicknames from '{args.names_file}'")
-    chat_messages = read_chat_messages(args.chat_file)
-    print(f"Loaded {len(chat_messages)} messages from '{args.chat_file}'")
-    build_version = parse_build_version(args.build)
-    print(f"EssekClient's build {args.build}")
-    print(f"Platform: {args.platform} / Arch: {args.arch}")
+    print(f"Loaded {len(names)} nicknames from '{names_file}'")
+    chat_messages = read_chat_messages(chat_file)
+    print(f"Loaded {len(chat_messages)} messages from '{chat_file}'")
+    build_version = parse_build_version(build)
+    print(f"EssekClient's build {build}")
+    print(f"Platform: {platform} / Arch: {arch}")
     nick_queue = Queue()
     for name in names:
         nick_queue.put(name)
@@ -295,11 +317,11 @@ def main():
         chat_queue.put(msg)
     stop_event = threading.Event()
     workers = []
-    for i in range(args.connections):
-        worker = threading.Thread(target=client_worker, args=(servers, nick_queue, chat_queue, build_version, args.platform, args.arch, i, stop_event), daemon=True)
+    for i in range(connections):
+        worker = threading.Thread(target=client_worker, args=(servers, nick_queue, chat_queue, build_version, platform, arch, i, stop_event), daemon=True)
         worker.start()
         workers.append(worker)
-        time.sleep(args.delay)
+        time.sleep(delay)
     try:
         while True:
             time.sleep(1)
